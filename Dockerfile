@@ -13,6 +13,10 @@ RUN apk add --no-cache ca-certificates
 
 COPY --from=builder /tmp/cyphernode_lunanode_proxy /usr/bin
 
+WORKDIR /
+
+COPY tsconf.json /tsconf.json
+
 EXPOSE 9999
 
 CMD ["/usr/bin/cyphernode_lunanode_proxy"]

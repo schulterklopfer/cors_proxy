@@ -1,0 +1,6 @@
+{
+  "listen": ":9999",
+  "whitelist": [
+    "^https:\\/\\/dynamic\\.lunanode\\.com"
+  ]
+}

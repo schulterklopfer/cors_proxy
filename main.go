@@ -1,11 +1,48 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os"
+	"regexp"
 	"strconv"
 )
+
+type Configuration struct {
+	Listen string `json:"listen"`
+	Whitelist []string `json:"whitelist"`
+}
+
+var configuration = Configuration{":9999", []string{"^https:\\/\\/dynamic\\.lunanode\\.com"}}
+
+const configFile = "tsconf.json"
+
+func readConfiguration() {
+
+	file, err := os.Open(configFile)
+	defer file.Close()
+
+	if err != nil {
+		fmt.Println("No tsconf.json found. ")
+		return
+	}
+
+	decoder := json.NewDecoder(file)
+	configuration = Configuration{}
+	err = decoder.Decode(&configuration)
+	if err != nil {
+		fmt.Println("error:", err)
+	}
+
+	fmt.Println( "Whitelist:" )
+
+	for _, pattern := range configuration.Whitelist {
+		fmt.Println( "  * "+pattern )
+	}
+
+}
 
 func forward(w http.ResponseWriter, req *http.Request) {
 
@@ -14,8 +51,36 @@ func forward(w http.ResponseWriter, req *http.Request) {
 	contentLength, err := strconv.ParseInt(req.Header.Get("content-length"),10,64)
 
 	if err != nil {
-		fmt.Println(err);
+		fmt.Println(err)
 		w.WriteHeader(503)
+		fmt.Println("...done (503)")
+		return
+	}
+
+	url := req.URL.RawQuery
+
+	processRequest := false
+
+	for _, pattern := range configuration.Whitelist {
+
+		match, err := regexp.MatchString(pattern, url)
+
+		if err != nil {
+			// ignore pattern
+			continue
+		}
+
+		if match {
+			processRequest = true
+			break
+		}
+
+	}
+
+	if !processRequest {
+		fmt.Printf("%s not in whitelist. Rejecting.\n", url)
+		w.WriteHeader(404)
+		fmt.Println("...done (404)")
 		return
 	}
 
@@ -26,13 +91,13 @@ func forward(w http.ResponseWriter, req *http.Request) {
 	req.Header.Del("content-length")
 
 
-	url := req.URL.RawQuery
 
 	proxyReq, err := http.NewRequest("POST", url, req.Body)
 
 	if err != nil {
 		fmt.Println(err);
 		w.WriteHeader(503)
+		fmt.Println("...done (503)")
 		return
 	}
 
@@ -48,6 +113,7 @@ func forward(w http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		fmt.Println(err);
 		w.WriteHeader(503)
+		fmt.Println("...done (503)")
 		return
 	}
 
@@ -65,19 +131,21 @@ func forward(w http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		fmt.Println(err);
 		w.WriteHeader(503)
+		fmt.Println("...done (503)")
 		return
 	}
 
 	fmt.Println("[RX]" )
 	w.Write(bodyBytes)
 
-	fmt.Println("...done")
+	fmt.Println("...done (200)")
 
 }
 func main() {
+	readConfiguration()
 	http.HandleFunc("/", forward)
-	fmt.Println("Starting proxy on port 9999")
-	if err := http.ListenAndServe(":9999", nil); err != nil {
+	fmt.Printf("Starting proxy on %s\n", configuration.Listen)
+	if err := http.ListenAndServe(configuration.Listen, nil); err != nil {
 		panic(err)
 	}
 }
